@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>:root{color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
+<title>Daily Slip</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: control panel on the left (sticky), receipt on a "desk" on the right; stacks on phones. Paper is always white: it's a physical object. */
+:root {
+  --bg: #EDEFF3; --panel: #FFFFFF; --ink: #161A21; --muted: #5E6673; --line: #D7DBE2;
+  --accent: #2F5BEA; --accent-ink: #FFFFFF; --desk: #DCE0E7; --chip: #F3F5F8; --bad: #C23B3B;
+  --paper: #FFFFFF; --print: #0B0B0B;
+  --f-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-head: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111318; --panel: #1A1D23; --ink: #E8EBF0; --muted: #9AA2AE; --line: #2C3139;
+  --accent: #7E9CFF; --accent-ink: #0C1020; --desk: #0B0D11; --chip: #23272F; --bad: #FF8A8A; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111318; --panel: #1A1D23; --ink: #E8EBF0; --muted: #9AA2AE; --line: #2C3139;
+  --accent: #7E9CFF; --accent-ink: #0C1020; --desk: #0B0D11; --chip: #23272F; --bad: #FF8A8A; color-scheme: dark }
+
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 14px; line-height: 1.45 }
+.app { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 24px; max-width: 1240px; margin: 0 auto;
+  padding-block: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+@media (max-width: 820px) { .app { grid-template-columns: minmax(0, 1fr) } }
+
+/* ---------- Controls ---------- */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 20px; align-self: start; position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)) }
+@media (max-width: 820px) { .panel { position: static } }
+.brand { display: flex; flex-direction: column; gap: 2px }
+.brand h1 { margin: 0; font-family: var(--f-head); font-weight: 900; font-size: 30px; letter-spacing: .01em; text-transform: uppercase; line-height: 1 }
+.brand p { margin: 0; color: var(--muted) }
+.group { display: flex; flex-direction: column; gap: 10px }
+.label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted) }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--chip); border-radius: 10px; padding: 3px; gap: 3px }
+.seg button { font: inherit; font-weight: 500; border: 0; background: transparent; color: var(--ink); padding: 8px 10px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.2 }
+.seg button small { color: var(--muted); font-size: 11px; font-weight: 400 }
+.seg button[aria-pressed="true"] { background: var(--panel); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.seg button[aria-pressed="true"] small { color: var(--accent) }
+.seg.sm button { padding: 6px 8px; font-size: 13px }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+.sections { display: flex; flex-direction: column; gap: 8px }
+.sec { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; transition: opacity .15s }
+.sec.off { opacity: .55 }
+.sec.off .sub { display: none }
+.sec-head { display: flex; align-items: center; gap: 10px }
+.sec-ico { width: 32px; height: 32px; border-radius: 8px; background: var(--chip); display: grid; place-items: center; flex: none }
+.sec-ico svg { width: 18px; height: 18px; stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round }
+.sec-title { flex: 1; min-width: 0 }
+.sec-title b { display: block; font-weight: 600 }
+.sec-title span { display: block; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.move { display: flex; flex-direction: column }
+.move button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; line-height: 1; font-size: 12px; height: 14px }
+.move button:hover { color: var(--ink) }
+.move button:disabled { opacity: .25; cursor: default }
+.switch { position: relative; width: 38px; height: 22px; flex: none }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1 }
+.switch i { position: absolute; inset: 0; border-radius: 11px; background: var(--line); transition: background .15s }
+.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s }
+.switch input:checked + i { background: var(--accent) }
+.switch input:checked + i::after { transform: translateX(16px) }
+.switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px }
+.sub { display: flex; flex-direction: column; gap: 8px; padding-left: 42px }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); font-size: 13px }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0 }
+
+.hint { margin: 0; color: var(--muted); font-size: 12px }
+.summary { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); padding-top: 16px; font-variant-numeric: tabular-nums }
+.summary b { font-size: 20px; font-weight: 600 }
+.summary span { color: var(--muted) }
+.print { font: inherit; font-weight: 600; width: 100%; border: 0; border-radius: 10px; padding: 12px; background: var(--accent); color: var(--accent-ink); cursor: pointer }
+.print:disabled { opacity: .55; cursor: progress }
+.note.bad, .hint.bad, .bad { color: var(--bad) }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0 }
+.field input { font: inherit; font-size: 14px; color: var(--ink); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; min-width: 0 }
+.row2 { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 8px }
+.btn { font: inherit; font-weight: 500; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 8px 12px; cursor: pointer }
+.btn:hover { background: var(--chip) }
+.srcbox { display: flex; flex-direction: column; gap: 8px; align-items: flex-start }
+.srcbox .field { width: 100% }
+.drop { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 2px dashed var(--line); border-radius: 10px; padding: 14px; cursor: pointer; text-align: center }
+.drop span { color: var(--muted); font-size: 12px }
+.drop.over { border-color: var(--accent); background: var(--chip) }
+details > summary { cursor: pointer; list-style: none }
+details > summary::-webkit-details-marker { display: none }
+details.group > summary::after { content: "▾"; float: right; color: var(--muted) }
+details.group:not([open]) > summary::after { content: "▸" }
+details.fmt summary { color: var(--accent); font-size: 12px }
+pre.fmt { overflow-x: auto; font: 12px/1.4 var(--f-mono); background: var(--chip); padding: 10px; border-radius: 8px; margin: 8px 0 0 }
+.check.inline { color: var(--ink) }
+.receipt.printing { box-shadow: none; padding-bottom: 28px }
+.receipt.printing::after { display: none }
+.note { margin: -12px 0 0; text-align: center; color: var(--muted); font-size: 12px; min-height: 1.4em }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+
+/* ---------- Desk + paper ---------- */
+.desk { background: var(--desk); border-radius: 14px; padding: 28px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0 }
+.desk-meta { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums }
+.desk-meta b { color: var(--ink); font-weight: 600 }
+.stage { width: 100%; display: flex; justify-content: center }
+.scaler { transform-origin: top center }
+.slot { width: 100%; height: 10px; border-radius: 6px; background: var(--ink); opacity: .85; max-width: 640px; margin-bottom: -18px; position: relative; z-index: 1 }
+
+.receipt { --fs: 22px; background: var(--paper); color: var(--print); font-family: var(--f-mono); font-size: var(--fs); line-height: 1.3;
+  width: 576px; padding: 36px 24px 56px; position: relative; box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 14px 30px -12px rgba(0,0,0,.35);
+  -webkit-font-smoothing: none; font-smooth: never }
+.receipt.w58 { --fs: 18px; width: 384px; padding: 30px 14px 50px }
+.receipt::after { content: ""; position: absolute; left: 0; right: 0; bottom: -12px; height: 12px; background:
+  linear-gradient(-45deg, transparent 8px, var(--paper) 0) 0 0 / 16px 12px repeat-x,
+  linear-gradient(45deg, transparent 8px, var(--paper) 0) 0 0 / 16px 12px repeat-x }
+.r-hd { text-align: center; display: flex; flex-direction: column; gap: 4px; padding-bottom: 20px }
+.r-day { font-family: var(--f-head); font-weight: 900; font-size: calc(var(--fs) * 3.6); line-height: .9; text-transform: uppercase; letter-spacing: .01em }
+.r-date { font-family: var(--f-head); font-weight: 700; font-size: calc(var(--fs) * 1.5); text-transform: uppercase; letter-spacing: .06em }
+.r-meta { font-size: calc(var(--fs) * .78); display: flex; justify-content: center; gap: 1.2em; flex-wrap: wrap }
+.rule { border: 0; border-top: 3px dashed var(--print); margin: 0 }
+.rule.solid { border-top-style: solid; border-top-width: 4px }
+.r-sec { padding: 20px 0 22px; display: flex; flex-direction: column; gap: 14px }
+.r-h { display: flex; align-items: center; gap: .5em; font-family: var(--f-head); font-weight: 900; font-size: calc(var(--fs) * 1.45); text-transform: uppercase; letter-spacing: .04em; line-height: 1 }
+.r-h::after { content: ""; flex: 1; height: 4px; background: var(--print) }
+.r-h small { font-family: var(--f-mono); font-weight: 400; font-size: calc(var(--fs) * .7); letter-spacing: 0; text-transform: none; order: 2 }
+.inv { background: var(--print); color: var(--paper); padding: 0 .3em }
+
+/* weather */
+.wx-now { display: flex; align-items: center; gap: 16px }
+.wx-now svg { width: calc(var(--fs) * 5); height: calc(var(--fs) * 5); flex: none }
+.wx-temp { font-family: var(--f-head); font-weight: 900; font-size: calc(var(--fs) * 4); line-height: .85 }
+.wx-desc { display: flex; flex-direction: column; gap: 2px; min-width: 0 }
+.wx-desc b { font-weight: 600 }
+.wx-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; font-size: calc(var(--fs) * .82) }
+.wx-stats div { display: flex; justify-content: space-between; gap: 6px }
+.wx-hours { display: grid; grid-template-columns: repeat(5, 1fr); border: 3px solid var(--print); }
+.wx-hours div { display: flex; flex-direction: column; align-items: center; padding: 6px 0; gap: 2px; font-size: calc(var(--fs) * .8) }
+.wx-hours div + div { border-left: 2px dotted var(--print) }
+.wx-hours svg { width: calc(var(--fs) * 1.7); height: calc(var(--fs) * 1.7) }
+.wx-hours b { font-weight: 600; font-size: var(--fs) }
+svg.g { fill: none; stroke: var(--print); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round }
+
+/* calendar */
+.ev { display: grid; grid-template-columns: 4.6em 1fr; gap: 4px 10px }
+.ev .t { font-weight: 600; font-variant-numeric: tabular-nums }
+.ev .s { font-size: calc(var(--fs) * .78) }
+.ev .allday { grid-column: 1 / -1; border: 2px solid var(--print); padding: 2px 8px; font-size: calc(var(--fs) * .85) }
+.mm { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: calc(var(--fs) * .8); font-variant-numeric: tabular-nums; gap: 2px 0 }
+.mm .dh { font-weight: 600; border-bottom: 2px solid var(--print); padding-bottom: 2px; margin-bottom: 2px }
+.mm .today { background: var(--print); color: var(--paper); font-weight: 600 }
+.mm .past { text-decoration: line-through }
+.mm-t { font-family: var(--f-head); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; text-align: center; font-size: calc(var(--fs) * 1.05) }
+
+/* to-do */
+.todo { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px }
+.todo li { display: grid; grid-template-columns: 1.1em 1fr; gap: 12px; align-items: start }
+.box { width: 1.05em; height: 1.05em; border: 3px solid var(--print); margin-top: .12em }
+.todo-day { font-weight: 600; font-size: calc(var(--fs) * .85); border-bottom: 2px solid var(--print); padding-bottom: 4px; margin-top: 4px }
+.menu { display: grid; grid-template-columns: 2.8em 1fr; gap: 6px 12px; align-items: baseline }
+.menu.big { font-size: calc(var(--fs) * 1.1); gap: 12px 14px }
+.menu .inv { text-align: center; font-weight: 600 }
+.menu .today-meal { font-weight: 600 }
+.menu .tag { font-weight: 400; font-size: calc(var(--fs) * .75) }
+.aisle { font-size: calc(var(--fs) * .75); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px }
+.todo.shop { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px }
+.receipt.w58 .todo.shop { grid-template-columns: 1fr }
+.todo.shop li { gap: 8px; font-size: calc(var(--fs) * .88) }
+.todo .tag { font-size: calc(var(--fs) * .75) }
+.todo .pri { font-weight: 600 }
+.src { font-size: calc(var(--fs) * .7); text-align: right }
+.blank li .line { border-bottom: 2px dotted var(--print); height: 1.1em }
+
+/* puzzles */
+.pz-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px }
+.sdk { border-collapse: collapse; border: 4px solid var(--print); width: 78%; table-layout: fixed }
+.sdk td { border: 1px solid var(--print); aspect-ratio: 1; text-align: center; vertical-align: middle; padding: 0; font-weight: 600; font-size: calc(var(--fs) * 1.05) }
+.sdk td.r3 { border-right: 5px solid var(--print) } .sdk tr.b3 td { border-bottom: 5px solid var(--print) }
+.cw { display: grid; grid-template-columns: repeat(5, 1fr); width: 62%; border: 3px solid var(--print) }
+.cw div { aspect-ratio: 1; border: 1px solid var(--print); position: relative }
+.cw div.x { background: var(--print) }
+.cw div span { position: absolute; top: 3px; left: 5px; font-size: calc(var(--fs) * .62); line-height: 1 }
+.clues { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: calc(var(--fs) * .78); width: 100% }
+.receipt.w58 .clues { grid-template-columns: 1fr }
+.clues b { display: block; font-weight: 600; font-size: calc(var(--fs) * .85); border-bottom: 2px solid var(--print); margin-bottom: 4px }
+.clues p { margin: 0 0 4px }
+.pz-cap { font-size: calc(var(--fs) * .72); text-align: center }
+
+.r-ft { padding-top: 22px; text-align: center; display: flex; flex-direction: column; gap: 6px; font-size: calc(var(--fs) * .78) }
+.r-ft .big { font-family: var(--f-head); font-weight: 900; font-size: calc(var(--fs) * 1.6); text-transform: uppercase; line-height: 1 }
+.receipt.photo { padding: 0 0 40px }
+.receipt.photo.w58 { padding: 0 0 34px }
+.receipt.photo canvas { display: block; width: 100%; image-rendering: pixelated }
+.receipt.photo .r-ft { padding: 18px 16px 0 }
+.receipt.photo .cap { font-family: var(--f-head); font-weight: 900; font-size: calc(var(--fs) * 1.5); text-transform: uppercase; line-height: 1.05; letter-spacing: .02em }
+.range { display: grid; grid-template-columns: 78px minmax(0,1fr) 34px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); width: 100% }
+.range input { width: 100%; accent-color: var(--accent) }
+.range output { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink) }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap }
+.empty { padding: 40px 0; text-align: center; font-size: calc(var(--fs) * .85) }
+</style>
+
+<div class="app">
+  <aside class="panel" aria-label="Print options">
+    <div class="brand">
+      <h1>Daily Slip</h1>
+      <p>Pick a printout and what goes on it.</p>
+    </div>
+
+    <div class="group">
+      <span class="label">What to print</span>
+      <div class="seg" role="group" aria-label="Printout" style="grid-template-columns:repeat(2,1fr);grid-auto-flow:row">
+        <button type="button" id="m-daily" data-mode="daily" aria-pressed="true">Daily slip<small>every morning</small></button>
+        <button type="button" id="m-menu" data-mode="menu" aria-pressed="false">Meal plan<small>weekly</small></button>
+        <button type="button" id="m-list" data-mode="list" aria-pressed="false">Shopping<small>weekly</small></button>
+        <button type="button" id="m-photo" data-mode="photo" aria-pressed="false">Photo<small>one-off</small></button>
+      </div>
+      <p class="hint" id="mode-hint" hidden>From Obsidian · 01 - Inbox/Weekly Shop</p>
+    </div>
+
+    <div class="group" id="weekly-src" hidden>
+      <span class="label">Where the list comes from</span>
+      <div class="seg sm" role="group" aria-label="Source">
+        <button type="button" id="src-note" data-src="note" aria-pressed="true">Obsidian note</button>
+        <button type="button" id="src-file" data-src="file" aria-pressed="false">Upload .md</button>
+      </div>
+      <div class="srcbox" id="box-note">
+        <label class="field" for="note-path"><span>Note path in your vault</span><input id="note-path" type="text" value="01 - Inbox/Weekly Shop.md" spellcheck="false" autocomplete="off"></label>
+        <button type="button" class="btn" id="note-load">Reload note</button>
+      </div>
+      <div class="srcbox" id="box-file" hidden>
+        <label class="drop" id="drop" for="md-file"><b>Choose a .md file</b><span>or drop it here</span></label>
+        <input id="md-file" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
+      </div>
+      <p class="hint" id="src-status">Showing example data.</p>
+      <details class="fmt"><summary>Note format</summary>
+<pre class="fmt"># Weekly shop, w/c 12 October
+
+## Meal plan
+- Mon: Chicken &amp; leek pie
+- Tue: Halloumi traybake | leftovers for lunch
+- Wed: Thai green curry
+
+## Shopping list
+### Fruit &amp; veg
+- [ ] Leeks x2
+- [ ] Limes x2
+### Cupboard
+- [ ] Arborio rice</pre></details>
+    </div>
+
+    <div class="group" id="photo-opts" hidden>
+      <span class="label">Photo</span>
+      <div class="srcbox">
+        <label class="drop" id="ph-drop" for="ph-file"><b id="ph-name">Choose a photo</b><span>from your gallery or camera, or drop it here</span></label>
+        <input id="ph-file" type="file" accept="image/*" hidden>
+        <div class="seg sm" role="group" aria-label="Photo style" style="width:100%">
+          <button type="button" data-dither="atkinson" aria-pressed="true">Soft dots</button>
+          <button type="button" data-dither="fs" aria-pressed="false">Fine dots</button>
+          <button type="button" data-dither="none" aria-pressed="false">Bold</button>
+        </div>
+        <label class="range"><span>Brightness</span><input id="ph-bri" type="range" min="-60" max="60" value="10"><output id="ph-bri-o">10</output></label>
+        <label class="range"><span>Contrast</span><input id="ph-con" type="range" min="-50" max="80" value="15"><output id="ph-con-o">15</output></label>
+        <div class="btnrow"><button type="button" class="btn" id="ph-rot">Rotate ↻</button><button type="button" class="btn" id="ph-clear">Remove photo</button></div>
+        <label class="field" for="ph-cap"><span>Caption (optional)</span><input id="ph-cap" type="text" maxlength="60" placeholder="e.g. Sunday walk" autocomplete="off"></label>
+        <label class="check inline"><input type="checkbox" id="ph-date" checked>Print today's date under it</label>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label">Paper roll</span>
+      <div class="seg" role="group" aria-label="Paper width">
+        <button type="button" id="w80" data-w="80" aria-pressed="true">80 mm<small>576 dots</small></button>
+        <button type="button" id="w58" data-w="58" aria-pressed="false">58 mm<small>384 dots</small></button>
+      </div>
+    </div>
+
+    <div class="group" id="daily-opts">
+      <span class="label">Sections · reorder with arrows</span>
+      <div class="sections" id="sections">
+        <div class="sec" data-key="weather">
+          <div class="sec-head">
+            <div class="move"><button type="button" data-dir="-1" aria-label="Move weather up">▲</button><button type="button" data-dir="1" aria-label="Move weather down">▼</button></div>
+            <div class="sec-ico"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.5"/><path d="M9 2v1.5M2 9h1.5M4 4l1 1M14 4l-1 1"/><path d="M8 20h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.5 1.5A2.8 2.8 0 0 0 8 20z"/></svg></div>
+            <div class="sec-title"><b>Weather</b><span>London · Met Office</span></div>
+            <label class="switch"><input type="checkbox" id="on-weather" checked aria-label="Print weather"><i></i></label>
+          </div>
+          <div class="sub"><label class="check"><input type="checkbox" id="opt-hourly" checked>Hourly strip</label></div>
+        </div>
+
+        <div class="sec" data-key="calendar">
+          <div class="sec-head">
+            <div class="move"><button type="button" data-dir="-1" aria-label="Move calendar up">▲</button><button type="button" data-dir="1" aria-label="Move calendar down">▼</button></div>
+            <div class="sec-ico"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+            <div class="sec-title"><b>Calendar</b><span>Proton Calendar · today</span></div>
+            <label class="switch"><input type="checkbox" id="on-calendar" checked aria-label="Print calendar"><i></i></label>
+          </div>
+          <div class="sub"><label class="check"><input type="checkbox" id="opt-month" checked>Mini month view</label></div>
+        </div>
+
+        <div class="sec" data-key="todo">
+          <div class="sec-head">
+            <div class="move"><button type="button" data-dir="-1" aria-label="Move to-do up">▲</button><button type="button" data-dir="1" aria-label="Move to-do down">▼</button></div>
+            <div class="sec-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="6" rx="1"/><path d="M4.5 7l1 1 2-2M12 7h9M12 17h9"/><rect x="3" y="14" width="6" height="6" rx="1"/></svg></div>
+            <div class="sec-title"><b>To-do</b><span>Obsidian · 01 - Inbox/⚡ Quick Task</span></div>
+            <label class="switch"><input type="checkbox" id="on-todo" checked aria-label="Print to-do list"><i></i></label>
+          </div>
+          <div class="sub">
+            <label class="check"><input type="checkbox" id="opt-tomorrow" checked>Include tomorrow</label>
+            <label class="check"><input type="checkbox" id="opt-overdue" checked>Include overdue tasks</label>
+            <label class="check"><input type="checkbox" id="opt-blank" checked>Add 3 blank lines</label>
+          </div>
+        </div>
+
+        <div class="sec" data-key="puzzle">
+          <div class="sec-head">
+            <div class="move"><button type="button" data-dir="-1" aria-label="Move puzzle up">▲</button><button type="button" data-dir="1" aria-label="Move puzzle down">▼</button></div>
+            <div class="sec-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></div>
+            <div class="sec-title"><b>Puzzle</b><span>Something for the coffee break</span></div>
+            <label class="switch"><input type="checkbox" id="on-puzzle" checked aria-label="Print puzzle"><i></i></label>
+          </div>
+          <div class="sub">
+            <div class="seg sm" role="group" aria-label="Puzzle type">
+              <button type="button" id="pz-sudoku" data-pz="sudoku" aria-pressed="true">Sudoku</button>
+              <button type="button" id="pz-cross" data-pz="crossword" aria-pressed="false">Crossword</button>
+            </div>
+            <div class="seg sm" role="group" aria-label="Sudoku difficulty" id="diff">
+              <button type="button" id="d-easy" data-d="easy" aria-pressed="true">Easy</button>
+              <button type="button" id="d-hard" data-d="hard" aria-pressed="false">Fiendish</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <details class="group" id="printer">
+      <summary class="label">Printer</summary>
+      <div class="srcbox" style="margin-top:10px">
+        <div class="seg sm" role="group" aria-label="Connection" style="width:100%">
+          <button type="button" data-conn="bt" aria-pressed="true">Bluetooth<small>from this phone</small></button>
+          <button type="button" data-conn="net" aria-pressed="false">Network<small>PC helper</small></button>
+        </div>
+      </div>
+      <div class="srcbox" id="box-bt" style="margin-top:10px">
+        <p class="hint" id="bt-status">Not connected.</p>
+        <button type="button" class="btn" id="bt-connect">Connect printer</button>
+      </div>
+      <div class="srcbox" id="box-net" style="margin-top:10px" hidden>
+        <p class="hint" id="helper-status">Checking for the helper…</p>
+        <div class="row2" style="width:100%">
+          <label class="field" for="p-ip"><span>Printer IP address</span><input id="p-ip" type="text" inputmode="decimal" placeholder="192.168.1.50" spellcheck="false" autocomplete="off"></label>
+          <label class="field" for="p-port"><span>Port</span><input id="p-port" type="text" inputmode="numeric" value="9100" autocomplete="off"></label>
+        </div>
+        <label class="field" id="row-vault" for="p-vault" hidden><span>Obsidian vault folder (on this PC)</span><input id="p-vault" type="text" placeholder="C:\Users\Tom\Documents\Vaultymcvaultface_syncy" spellcheck="false" autocomplete="off"></label>
+        <button type="button" class="btn" id="p-test">Test connection</button>
+        <p class="hint" id="p-msg"></p>
+      </div>
+      <label class="check inline" style="margin-top:10px"><input type="checkbox" id="p-cut" checked>Cut the paper after printing (if your printer has a cutter)</label>
+    </details>
+
+    <div class="summary"><b id="sum-len">–</b><span id="sum-sec">–</span></div>
+    <button class="print" id="print-btn" type="button">Print</button>
+    <p class="note" id="print-note"></p>
+  </aside>
+
+  <main class="desk">
+    <div class="desk-meta"><span>Preview at <b id="m-w">80 mm</b></span><span>Scaled to <b id="m-z">100%</b></span><span>203 dpi · monochrome</span></div>
+    <div class="slot" aria-hidden="true"></div>
+    <div class="stage" id="stage"><div class="scaler" id="scaler"><div class="receipt" id="receipt"></div></div></div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+const S = { w: 80, mode: 'daily', src: 'note', order: ['weather','calendar','todo','puzzle'], on: { weather:1, calendar:1, todo:1, puzzle:1 },
+  hourly: true, month: true, overdue: true, tomorrow: true, blank: true, pz: 'sudoku', diff: 'easy' };
+
+// ---- icons (1-bit friendly line art) ----
+const G = {
+  sun: '<circle cx="24" cy="24" r="8"/><path d="M24 6v5M24 37v5M6 24h5M37 24h5M11 11l3.5 3.5M33.5 33.5L37 37M11 37l3.5-3.5M33.5 14.5L37 11"/>',
+  part: '<circle cx="18" cy="17" r="6"/><path d="M18 5v3M6 17h3M9.5 8.5l2 2M26.5 8.5l-2 2"/><path d="M17 40h17a7 7 0 0 0 0-14 10 10 0 0 0-18.5 3A5.5 5.5 0 0 0 17 40z" fill="#fff"/>',
+  cloud: '<path d="M14 36h20a8 8 0 0 0 0-16 11 11 0 0 0-21 3.5A6.3 6.3 0 0 0 14 36z"/>',
+  rain: '<path d="M14 30h20a8 8 0 0 0 0-16 11 11 0 0 0-21 3.5A6.3 6.3 0 0 0 14 30z"/><path d="M17 35l-2 5M25 35l-2 5M33 35l-2 5"/>',
+  moon: '<path d="M30 8a14 14 0 1 0 10 22A12 12 0 0 1 30 8z"/>'
+};
+const ico = (k, cls='g') => `<svg class="${cls}" viewBox="0 0 48 48">${G[k]}</svg>`;
+
+// ---- placeholder data (Wed 14 Oct 2026) ----
+const hours = [['09','part',11],['12','sun',15],['15','part',16],['18','rain',13],['21','moon',10]];
+const events = [
+  { allday: 'Bin day · recycling out tonight' },
+  { t:'09:30', e:'10:00', n:'Portfolio review with Priya', s:'Google Meet' },
+  { t:'12:30', e:'13:30', n:'Lunch with Mum', s:'Dishoom, King\'s Cross' },
+  { t:'14:00', e:'15:00', n:'Interview · Product Designer', s:'Remote · bring case study 2' },
+  { t:'18:30', e:'20:00', n:'Climbing', s:'The Castle' }
+];
+const tasks = [
+  { n:'Book dentist', tag:'#admin', overdue:'Mon 12 Oct' },
+  { n:'Reply to Alex about the weekend', tag:'#life', overdue:'Tue 13 Oct' },
+  { n:'Send portfolio link to Studio North', tag:'#jobs', pri:'!!' },
+  { n:'Finish habit-tracker case study, final screens', tag:'#portfolio', pri:'!' },
+  { n:'Prep 3 questions for the 2pm interview', tag:'#jobs' },
+  { n:'Order 80mm thermal paper rolls', tag:'#home', when:'tomorrow' },
+  { n:'Follow up on the 2pm interview', tag:'#jobs', when:'tomorrow' },
+  { n:'Export case study screens for Dribbble', tag:'#portfolio', when:'tomorrow' }
+];
+let meals = [
+  ['Mon','Chicken & leek pie',''],['Tue','Halloumi traybake','leftovers for lunch'],['Wed','Thai green curry','20 min · prep rice first'],
+  ['Thu','Mushroom risotto',''],['Fri','Homemade pizza night',''],['Sat','Out · Mum\'s birthday',''],['Sun','Roast pork, apple sauce','batch gravy']
+];
+let shop = [
+  ['Fruit & veg', ['Leeks ×2','Mushrooms 400g','Red peppers ×3','Courgette','Limes ×2','Bramley apples ×2']],
+  ['Meat & dairy', ['Chicken thighs 1kg','Pork shoulder 1.5kg','Halloumi ×2','Mozzarella ×2','Parmesan','Butter']],
+  ['Cupboard', ['Arborio rice','Coconut milk ×2','Thai green paste','Strong white flour','Chopped tomatoes ×2']],
+  ['Bakery & frozen', ['Puff pastry','Frozen peas']]
+];
+const sudoku = {
+  easy: '530070000600195000098000060800060003400802001700020006060000280000419005000080079',
+  hard: '800000000003600000070090200050007000000045700000100030001000068008500010090000400'
+};
+const cw = { grid: ['SLATE','T#L#A','ODOUR','R#N#N','MEETS'], nums: { '0,0':1, '0,2':2, '0,4':3, '2,0':4, '4,0':5 },
+  across: [[1,'Roof tile, or a clean one to start afresh (5)'],[4,'Smell, spelt the British way (5)'],[5,'Comes together (5)']],
+  down: [[1,'Thunder and lightning (5)'],[2,'Without company (5)'],[3,'Takes home, as wages (5)']] };
+
+// ---- section renderers ----
+const R = {
+  weather: () => `
+    <div class="r-h">Weather<small>London</small></div>
+    <div class="wx-now">${ico('part')}<div class="wx-temp">16°</div>
+      <div class="wx-desc"><b>Sunny spells</b><span>Showers after 5pm</span><span>Feels like 14°</span></div></div>
+    <div class="wx-stats">
+      <div><span>High / low</span><b>16° / 9°</b></div><div><span>Rain</span><b>60%</b></div>
+      <div><span>Wind</span><b>SW 14mph</b></div><div><span>UV</span><b>2 low</b></div>
+      <div><span>Sunrise</span><b>07:21</b></div><div><span>Sunset</span><b>18:09</b></div>
+    </div>
+    ${S.hourly ? `<div class="wx-hours">${hours.map(([h,k,t]) => `<div><span>${h}:00</span>${ico(k)}<b>${t}°</b></div>`).join('')}</div>` : ''}`,
+
+  calendar: () => {
+    const list = events.map(e => e.allday ? `<div class="allday">ALL DAY · ${e.allday}</div>`
+      : `<div class="t">${e.t}</div><div><div>${e.n}</div><div class="s">${e.e} · ${e.s}</div></div>`).join('');
+    let mm = '';
+    if (S.month) {
+      const cells = ['M','T','W','T','F','S','S'].map(d => `<div class="dh">${d}</div>`);
+      for (let i = 0; i < 3; i++) cells.push('<div></div>'); // 1 Oct 2026 is a Thursday
+      for (let d = 1; d <= 31; d++) cells.push(`<div class="${d === 14 ? 'today' : d < 14 ? 'past' : ''}">${d}</div>`);
+      mm = `<div class="mm-t">October 2026</div><div class="mm">${cells.join('')}</div>`;
+    }
+    return `<div class="r-h">Calendar<small>Proton · ${events.length - 1} events</small></div><div class="ev">${list}</div>${mm}`;
+  },
+
+  todo: () => {
+    const today = tasks.filter(t => !t.when && (S.overdue || !t.overdue));
+    const tmrw = S.tomorrow ? tasks.filter(t => t.when === 'tomorrow') : [];
+    const items = [...today, ...tmrw];
+    const li = list => list.map(t => `<li><div class="box"></div><div>${t.pri ? `<span class="pri">${t.pri} </span>` : ''}${t.n}
+      <div class="tag">${t.tag}${t.overdue ? ` · <span class="inv">OVERDUE</span> ${t.overdue}` : ''}</div></div></li>`).join('');
+    const blank = S.blank ? '<li><div class="box"></div><div class="line"></div></li>'.repeat(3) : '';
+    return `<div class="r-h">To-do<small>${items.length} open</small></div>
+      <div class="todo-day"><span class="inv">TODAY</span> Wed 14 Oct</div>
+      <ul class="todo ${S.blank ? 'blank' : ''}">${li(today)}${blank}</ul>
+      ${tmrw.length ? `<div class="todo-day"><span class="inv">TOMORROW</span> Thu 15 Oct</div><ul class="todo">${li(tmrw)}</ul>` : ''}
+      <div class="src">from Obsidian · 01 - Inbox/Quick Task</div>`;
+  },
+
+  puzzle: () => {
+    if (S.pz === 'sudoku') {
+      const p = sudoku[S.diff];
+      let rows = '';
+      for (let r = 0; r < 9; r++) {
+        rows += `<tr class="${r === 2 || r === 5 ? 'b3' : ''}">`;
+        for (let c = 0; c < 9; c++) { const v = p[r*9+c]; rows += `<td class="${c === 2 || c === 5 ? 'r3' : ''}">${v === '0' ? '' : v}</td>`; }
+        rows += '</tr>';
+      }
+      const g = [...p].filter(x => x !== '0').length;
+      return `<div class="r-h">Sudoku<small>${S.diff === 'easy' ? 'Easy' : 'Fiendish'}</small></div>
+        <div class="pz-wrap"><table class="sdk">${rows}</table><div class="pz-cap">${g} givens · answers on tomorrow's slip</div></div>`;
+    }
+    const cells = cw.grid.flatMap((row, r) => [...row].map((ch, c) =>
+      ch === '#' ? '<div class="x"></div>' : `<div>${cw.nums[r+','+c] ? `<span>${cw.nums[r+','+c]}</span>` : ''}</div>`)).join('');
+    const cl = (h, a) => `<div><b>${h}</b>${a.map(([n,t]) => `<p>${n}. ${t}</p>`).join('')}</div>`;
+    return `<div class="r-h">Mini crossword<small>5×5</small></div>
+      <div class="pz-wrap"><div class="cw">${cells}</div><div class="clues">${cl('Across', cw.across)}${cl('Down', cw.down)}</div>
+      <div class="pz-cap">Answers on tomorrow's slip</div></div>`;
+  }
+};
+
+// ---- weekly printouts ----
+let weekLabel = 'w/c 12 October';
+let srcLabel = 'example data';
+const dayShort = new Date().toLocaleDateString('en-GB', { weekday: 'short' });
+const blankLines = n => `<ul class="todo blank">${'<li><div class="box"></div><div class="line"></div></li>'.repeat(n)}</ul>`;
+const W = {
+  menu: () => `<div class="r-hd"><div class="r-day">Meal plan</div><div class="r-date">${weekLabel}</div>
+      <div class="r-meta"><span>${meals.length} dinners</span></div></div><hr class="rule solid">
+    <section class="r-sec">${meals.length ? `<div class="menu big">${meals.map(([d, m, n]) =>
+      `<div class="${d === dayShort ? 'inv' : ''}">${d}</div><div>${m}${n ? `<div class="tag">${n}</div>` : ''}</div>`).join('')}</div>`
+      : '<div class="empty">No meals found in this note.</div>'}
+      <div class="todo-day">Notes</div>${blankLines(3)}</section>`,
+  list: () => `<div class="r-hd"><div class="r-day">Shopping</div><div class="r-date">${weekLabel}</div>
+      <div class="r-meta"><span>${shop.reduce((a, [, i]) => a + i.length, 0)} items</span><span>${shop.length} aisles</span></div></div><hr class="rule solid">
+    <section class="r-sec">${shop.length ? shop.map(([aisle, items]) => `<div class="aisle">${aisle}</div><ul class="todo shop">${items.map(i =>
+      `<li><div class="box"></div><div>${i}</div></li>`).join('')}</ul>`).join('')
+      : '<div class="empty">No shopping list found in this note.</div>'}
+      <div class="aisle">Extras</div>${blankLines(3)}</section>`
+};
+const names = { weather:'Weather', calendar:'Calendar', todo:'To-do', puzzle:'Puzzle' };
+
+// ---- render ----
+const $ = s => document.querySelector(s);
+const receipt = $('#receipt'), scaler = $('#scaler'), stage = $('#stage');
+
+function render() {
+  const live = S.order.filter(k => S.on[k]);
+  const head = `<div class="r-hd"><div class="r-day">Wednesday</div><div class="r-date">14 October 2026</div>
+    <div class="r-meta"><span>Week 42</span><span>Day 287/365</span><span>78 days to go</span></div></div><hr class="rule solid">`;
+  const body = live.length ? live.map(k => `<section class="r-sec">${R[k]()}</section>`).join('<hr class="rule">')
+    : '<div class="empty">Nothing selected.<br>Turn on a section to print.</div>';
+  const daily = S.mode === 'daily';
+  const foot = `<hr class="rule solid"><div class="r-ft"><div class="big">${daily ? 'Have a good one, Tom' : S.mode === 'menu' ? 'Enjoy the week' : 'Happy shopping'}</div>
+    <div>${daily ? 'Printed 07:00' : 'Printed ' + new Date().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${S.w}mm roll</div>${daily ? '' : `<div>${srcLabel}</div>`}</div>`;
+  const photo = S.mode === 'photo';
+  receipt.className = 'receipt' + (S.w === 58 ? ' w58' : '') + (photo ? ' photo' : '');
+  if (photo) {
+    const cap = $('#ph-cap').value.trim(), dt = $('#ph-date').checked;
+    receipt.innerHTML = PH.img ? '' : '<div class="empty" style="padding:60px 20px">No photo yet.<br>Choose one on the left.</div>';
+    if (PH.img) { drawPhoto(); receipt.appendChild(PH.canvas); }
+    if (PH.img && (cap || dt)) receipt.insertAdjacentHTML('beforeend', `<div class="r-ft">${cap ? `<div class="cap">${esc(cap)}</div>` : ''}${dt ? `<div>${new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>` : ''}</div>`);
+  } else receipt.innerHTML = (daily ? head + body : W[S.mode]()) + foot;
+  document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === S.mode));
+  $('#daily-opts').hidden = !daily;
+  $('#weekly-src').hidden = daily || photo;
+  $('#photo-opts').hidden = !photo;
+  document.querySelectorAll('[data-src]').forEach(b => b.setAttribute('aria-pressed', b.dataset.src === S.src));
+  $('#box-note').hidden = S.src !== 'note'; $('#box-file').hidden = S.src !== 'file';
+  $('#mode-hint').hidden = daily || photo;
+
+  // UI state
+  document.querySelectorAll('[data-w]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.w === S.w));
+  document.querySelectorAll('[data-pz]').forEach(b => b.setAttribute('aria-pressed', b.dataset.pz === S.pz));
+  document.querySelectorAll('[data-d]').forEach(b => b.setAttribute('aria-pressed', b.dataset.d === S.diff));
+  $('#diff').hidden = S.pz !== 'sudoku';
+  const wrap = $('#sections');
+  S.order.forEach((k, i) => {
+    const el = wrap.querySelector(`[data-key="${k}"]`);
+    wrap.appendChild(el);
+    el.classList.toggle('off', !S.on[k]);
+    const [up, down] = el.querySelectorAll('.move button');
+    up.disabled = i === 0; down.disabled = i === S.order.length - 1;
+  });
+  $('#sum-sec').textContent = photo ? (PH.name || 'No photo chosen') : !daily ? (S.mode === 'menu' ? 'Meal plan' : 'Shopping list') : live.length ? live.map(k => names[k]).join(' · ') : 'No sections';
+  $('#m-w').textContent = S.w + ' mm';
+  fit();
+}
+
+function fit() {
+  const w = receipt.offsetWidth, h = receipt.offsetHeight;
+  const z = Math.min(1, (stage.clientWidth - 8) / w);
+  scaler.style.transform = `scale(${z})`;
+  scaler.style.height = (h * z + 14) + 'px';
+  scaler.parentElement.style.height = (h * z + 14) + 'px';
+  $('#m-z').textContent = Math.round(z * 100) + '%';
+  // 203 dpi ≈ 8 dots per mm; receipt is laid out at native dot width
+  $('#sum-len').textContent = '≈ ' + (h / 8 / 10).toFixed(1) + ' cm of paper';
+}
+
+// ---- events ----
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; render(); if (S.mode !== 'daily' && S.mode !== 'photo' && S.src === 'note' && helper && !noteLoaded) loadNote(); });
+document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { S.w = +b.dataset.w; LS.set('ds.w', S.w); render(); });
+document.querySelectorAll('[data-pz]').forEach(b => b.onclick = () => { S.pz = b.dataset.pz; render(); });
+document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { S.diff = b.dataset.d; render(); });
+Object.keys(S.on).forEach(k => $('#on-' + k).onchange = e => { S.on[k] = e.target.checked; render(); });
+[['hourly','#opt-hourly'],['month','#opt-month'],['overdue','#opt-overdue'],['tomorrow','#opt-tomorrow'],['blank','#opt-blank']]
+  .forEach(([k, id]) => $(id).onchange = e => { S[k] = e.target.checked; render(); });
+document.querySelectorAll('.move button').forEach(b => b.onclick = () => {
+  const k = b.closest('.sec').dataset.key, i = S.order.indexOf(k), j = i + +b.dataset.dir;
+  if (j < 0 || j >= S.order.length) return;
+  [S.order[i], S.order[j]] = [S.order[j], S.order[i]]; render(); b.focus();
+});
+
+// ---- weekly note parsing ----
+const DAYS = { mon:'Mon', tue:'Tue', wed:'Wed', thu:'Thu', fri:'Fri', sat:'Sat', sun:'Sun' };
+function parseWeekly(text) {
+  text = text.replace(/\r/g, '').replace(/^---\n[\s\S]*?\n---\n/, '');
+  let sec = '', aisle = 'Shopping'; const m = [], sh = [];
+  const wk = text.match(/w\/c\s+(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+)/i);
+  for (const raw of text.split('\n')) {
+    const line = raw.trim(); if (!line) continue;
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      const lvl = h[1].length, title = h[2].replace(/[*_`]/g, '').trim();
+      if (lvl <= 2 && /meal|menu|dinner/i.test(title)) sec = 'meals';
+      else if (lvl <= 2 && /^(weekly\s+)?(shop|shopping|grocer)|shopping list|groceries/i.test(title)) { sec = 'shop'; aisle = 'Shopping'; }
+      else if (sec === 'shop' && lvl >= 2) aisle = title;
+      continue;
+    }
+    const li = line.match(/^[-*+]\s+(?:\[([ xX])\]\s+)?(.*)$/);
+    if (sec === 'meals') {
+      const t = (li ? li[2] : line).replace(/\*\*|__/g, '');
+      const d = t.match(/^(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s*[:\-–—]?\s*(.+)$/i);
+      if (!d) continue;
+      let [name, ...rest] = d[2].split(/\s+[—–|]\s+|\s*\|\s*/);
+      let note = rest.join(' · ');
+      const pm = name.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+      if (pm) { name = pm[1]; note = note || pm[2]; }
+      m.push([DAYS[d[1].toLowerCase()], name.trim(), note.trim()]);
+    } else if (sec === 'shop' && li) {
+      if (li[1] && li[1].toLowerCase() === 'x') continue;
+      const item = li[2].replace(/\*\*|__/g, '').trim(); if (!item) continue;
+      let g = sh.find(a => a[0] === aisle); if (!g) { g = [aisle, []]; sh.push(g); }
+      g[1].push(item);
+    }
+  }
+  if (!m.length && !sh.length) throw new Error('No meal plan or shopping list found. Check the note format.');
+  return { meals: m, shop: sh, week: wk ? 'w/c ' + wk[1] : null };
+}
+function thisMonday() {
+  const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return 'w/c ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+}
+let noteLoaded = false;
+function setStatus(msg, bad) { const el = $('#src-status'); el.textContent = msg; el.classList.toggle('bad', !!bad); }
+function applyWeekly(p, label) {
+  meals = p.meals; shop = p.shop; weekLabel = p.week || thisMonday(); srcLabel = 'from ' + label;
+  setStatus(`${label} · ${meals.length} dinners · ${shop.reduce((a, [, i]) => a + i.length, 0)} items`);
+  render();
+}
+
+// ---- helper (runs on the PC; serves this page, reads the vault, talks to the printer) ----
+const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+let helper = null;
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Daily-Slip': '1' }, body: JSON.stringify(body) } : { headers: { 'X-Daily-Slip': '1' } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Helper error ' + r.status);
+  return j;
+}
+async function loadNote() {
+  const path = $('#note-path').value.trim();
+  if (!helper) { setStatus('Reading your vault needs the helper running on your PC. Upload a .md file instead.', true); return; }
+  try { const j = await api('/api/note?path=' + encodeURIComponent(path)); noteLoaded = true; applyWeekly(parseWeekly(j.text), j.name); }
+  catch (e) { setStatus(e.message, true); }
+}
+function readMd(f) {
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try { applyWeekly(parseWeekly(String(r.result)), f.name); } catch (e) { setStatus(e.message, true); } };
+  r.readAsText(f);
+}
+function prefs() { return { printer_ip: $('#p-ip').value.trim(), printer_port: parseInt($('#p-port').value, 10) || 9100, cut: $('#p-cut').checked, vault_path: $('#p-vault').value.trim(), weekly_note: $('#note-path').value.trim() }; }
+function savePrefs() {
+  const c = prefs(); LS.set('ds.ip', c.printer_ip); LS.set('ds.port', c.printer_port); LS.set('ds.cut', c.cut ? '1' : '0'); LS.set('ds.note', c.weekly_note);
+  if (helper) api('/api/config', c).catch(() => {});
+}
+function setMsg(el, msg, bad) { el.textContent = msg; el.classList.toggle('bad', !!bad); }
+
+['#p-ip', '#p-port', '#p-cut', '#p-vault', '#note-path'].forEach(id => $(id).addEventListener('change', savePrefs));
+document.querySelectorAll('[data-src]').forEach(b => b.onclick = () => { S.src = b.dataset.src; render(); if (S.src === 'note') loadNote(); });
+$('#note-load').onclick = loadNote;
+$('#md-file').onchange = e => { readMd(e.target.files[0]); e.target.value = ''; };
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => readMd(e.dataTransfer.files[0]));
+
+$('#p-test').onclick = async () => {
+  const msg = $('#p-msg'), c = prefs();
+  if (!helper) return setMsg(msg, 'Testing needs the helper running on your PC.', true);
+  if (!c.printer_ip) return setMsg(msg, 'Add the printer IP address first.', true);
+  setMsg(msg, 'Testing…');
+  try { await api('/api/test', { ip: c.printer_ip, port: c.printer_port }); setMsg(msg, `Printer reachable at ${c.printer_ip}:${c.printer_port}`); }
+  catch (e) { setMsg(msg, e.message, true); }
+};
+
+async function rasterise() {
+  const dots = S.w === 58 ? 384 : 576;
+  await (document.fonts && document.fonts.ready);
+  const canvas = await html2canvas(receipt, { scale: 1, backgroundColor: '#ffffff', logging: false,
+    scrollX: -window.scrollX, scrollY: -window.scrollY,
+    onclone: doc => { doc.getElementById('receipt').classList.add('printing'); const sc = doc.getElementById('scaler'); sc.style.transform = 'none'; sc.style.height = 'auto'; sc.parentElement.style.height = 'auto'; } });
+  let src = canvas;
+  if (canvas.width !== dots) { src = document.createElement('canvas'); src.width = dots; src.height = Math.round(canvas.height * dots / canvas.width); src.getContext('2d').drawImage(canvas, 0, 0, dots, src.height); }
+  const w = src.width, h = src.height, bpr = Math.ceil(w / 8);
+  const px = src.getContext('2d').getImageData(0, 0, w, h).data, out = new Uint8Array(bpr * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    if (0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2] < 165) out[y * bpr + (x >> 3)] |= 0x80 >> (x & 7);
+  }
+  let bin = ''; for (let i = 0; i < out.length; i += 0x8000) bin += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000));
+  return { width: bpr, height: h, data: btoa(bin), bytes: out };
+}
+$('#print-btn').onclick = async () => {
+  const note = $('#print-note'), btn = $('#print-btn'), c = prefs();
+  if (S.mode === 'photo' && !PH.img) { setMsg(note, 'Choose a photo first.', true); return; }
+  if (conn === 'bt') {
+    btn.disabled = true; btn.textContent = 'Printing…'; setMsg(note, '');
+    try {
+      await btReady();
+      if (bt.ch.lang === 'cat' && S.w !== 58) { S.w = 58; render(); setMsg(note, 'This printer takes 58 mm paper, so the layout switched to 58 mm.'); await sleep(300); }
+      const img = await rasterise();
+      const job = bt.ch.lang === 'cat' ? buildCatJob(img.width, img.height, img.bytes) : buildJob(img.width, img.height, img.bytes, c.cut);
+      await btSend(job, p => setMsg(note, `Sending to ${bt.device.name || 'printer'} · ${p}%`));
+      setMsg(note, `Printed on ${bt.device.name || 'printer'} · ${(job.length / 1024).toFixed(0)} KB`);
+    } catch (e) { setMsg(note, btError(e), true); $('#printer').open = true; }
+    finally { btn.disabled = false; btn.textContent = 'Print'; updateBt(); }
+    return;
+  }
+  if (!helper) { setMsg(note, 'Network printing needs the helper running on your PC. Open this page from the helper at localhost:8765.', true); $('#printer').open = true; return; }
+  if (!c.printer_ip) { setMsg(note, 'Add the printer IP address first.', true); $('#printer').open = true; $('#p-ip').focus(); return; }
+  btn.disabled = true; btn.textContent = 'Printing…'; setMsg(note, '');
+  try {
+    const img = await rasterise(); delete img.bytes;
+    const j = await api('/api/print', { ip: c.printer_ip, port: c.printer_port, cut: c.cut, ...img });
+    setMsg(note, `Sent to ${c.printer_ip} · ${(j.bytes / 1024).toFixed(0)} KB`);
+  } catch (e) { setMsg(note, e.message, true); }
+  finally { btn.disabled = false; btn.textContent = 'Print'; }
+};
+
+// ---- ESC/POS job (same as the PC helper): reset, raster in bands, feed, optional cut ----
+function buildJob(bpr, h, data, cut) {
+  const parts = [[0x1b, 0x40, 0x1b, 0x61, 0x00]], band = 128;
+  for (let y = 0; y < h; y += band) {
+    const n = Math.min(band, h - y);
+    parts.push([0x1d, 0x76, 0x30, 0x00, bpr & 255, bpr >> 8, n & 255, n >> 8]);
+    parts.push(data.subarray(y * bpr, (y + n) * bpr));
+  }
+  parts.push([0x1b, 0x64, 0x04]);
+  if (cut) parts.push([0x1d, 0x56, 0x42, 0x00]);
+  const out = new Uint8Array(parts.reduce((a, p) => a + p.length, 0)); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+// ---- Bluetooth (Chrome on Android/desktop, Web Bluetooth, BLE printers that speak ESC/POS) ----
+const BT_SERVICES = ['000018f0-0000-1000-8000-00805f9b34fb', '0000ff00-0000-1000-8000-00805f9b34fb', '0000ffe0-0000-1000-8000-00805f9b34fb',
+  '0000fee7-0000-1000-8000-00805f9b34fb', '0000ff12-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+  'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '0000ae30-0000-1000-8000-00805f9b34fb', '0000af30-0000-1000-8000-00805f9b34fb'];
+const CAT = ['0000ae30', '0000af30'];
+let bt = null, conn = 'bt';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function btSupported() { return !!(navigator.bluetooth && window.isSecureContext); }
+// Two languages: standard ESC/POS, or the "cat printer" protocol most pocket printers use (service ae30, 384-dot rows).
+async function findWritable(server) {
+  const services = await server.getPrimaryServices();
+  const cat = services.find(sv => CAT.some(c => sv.uuid.startsWith(c)));
+  if (cat) {
+    const chs = await cat.getCharacteristics();
+    const tx = chs.find(c => c.uuid.startsWith('0000ae01')) || chs.find(c => c.properties.writeWithoutResponse || c.properties.write);
+    const rx = chs.find(c => c.uuid.startsWith('0000ae02') && c.properties.notify);
+    if (tx) {
+      if (rx) { try { await rx.startNotifications(); rx.addEventListener('characteristicvaluechanged', e => {
+        const v = new Uint8Array(e.target.value.buffer);
+        if (v[2] === 0xAE && bt) bt.paused = v[6] === 0x10;   // printer asks us to wait / carry on
+      }); } catch (e) {} }
+      tx.lang = 'cat'; return tx;
+    }
+  }
+  for (const sv of services)
+    for (const ch of await sv.getCharacteristics())
+      if (ch.properties.writeWithoutResponse || ch.properties.write) { ch.lang = 'escpos'; return ch; }
+  throw new Error('NOCHAR');
+}
+const CRC = new Uint8Array(256);
+for (let i = 0; i < 256; i++) { let c = i; for (let j = 0; j < 8; j++) c = c & 0x80 ? ((c << 1) ^ 7) & 255 : (c << 1) & 255; CRC[i] = c; }
+const catPkt = (cmd, data) => [0x51, 0x78, cmd, 0x00, data.length & 255, data.length >> 8, ...data, data.reduce((c, b) => CRC[(c ^ b) & 255], 0), 0xFF];
+function buildCatJob(bpr, h, data) {
+  const W = 48, rev = b => { let r = 0; for (let k = 0; k < 8; k++) r |= ((b >> k) & 1) << (7 - k); return r; };
+  const parts = [catPkt(0xA4, [0x33]), catPkt(0xAF, [0xE0, 0x2E]), catPkt(0xBE, [0x01]), catPkt(0xBD, [0x19]),
+    catPkt(0xA6, [0xAA, 0x55, 0x17, 0x38, 0x44, 0x5F, 0x5F, 0x5F, 0x44, 0x38, 0x2C])];
+  for (let y = 0; y < h; y++) {
+    const row = new Array(W).fill(0);
+    for (let x = 0; x < Math.min(W, bpr); x++) row[x] = rev(data[y * bpr + x]);
+    parts.push(catPkt(0xA2, row));
+  }
+  parts.push(catPkt(0xA1, [0x60, 0x00]), catPkt(0xA6, [0xAA, 0x55, 0x17, 0, 0, 0, 0, 0, 0, 0, 0x17]));
+  const out = new Uint8Array(parts.reduce((a, p) => a + p.length, 0)); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+async function btConnect() {
+  const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BT_SERVICES });
+  device.addEventListener('gattserverdisconnected', updateBt);
+  const ch = await findWritable(await device.gatt.connect());
+  bt = { device, ch, step: 180, paused: false };
+  if (ch.lang === 'cat' && S.w !== 58) { S.w = 58; LS.set('ds.w', 58); render(); }
+  LS.set('ds.btname', device.name || '');
+}
+async function btReady() {
+  if (!btSupported()) throw new Error('NOBT');
+  if (!bt) await btConnect();
+  else if (!bt.device.gatt.connected) bt.ch = await findWritable(await bt.device.gatt.connect());
+}
+async function btSend(job, progress) {
+  const ch = bt.ch, fast = ch.properties.writeWithoutResponse;
+  let i = 0, last = -1;
+  while (i < job.length) {
+    while (bt.paused) await sleep(20);
+    const chunk = job.subarray(i, i + bt.step);
+    try {
+      if (fast) { await ch.writeValueWithoutResponse(chunk); await sleep(bt.step > 100 ? 12 : 4); }
+      else await ch.writeValueWithResponse(chunk);
+    } catch (e) {
+      if (bt.step > 20) { bt.step = 20; continue; }   // small connection packet size: retry in 20-byte pieces
+      throw e;
+    }
+    i += chunk.length;
+    const pc = Math.floor(i * 100 / job.length);
+    if (pc !== last && pc % 5 === 0) { last = pc; progress(pc); }
+  }
+  await sleep(400);
+}
+function btError(e) {
+  const m = String(e && (e.message || e));
+  if (m === 'NOBT') return 'Bluetooth printing needs Chrome on Android, with this page opened from an https address.';
+  if (m === 'NOCHAR') return "Connected, but couldn't find how to send data to this printer. Tell Claude the model name.";
+  if (e && e.name === 'NotFoundError') return 'No printer picked. Press Connect printer and choose it from the list.';
+  if (e && e.name === 'SecurityError') return 'Bluetooth was blocked. Allow it for this site in Chrome settings, then try again.';
+  return 'Bluetooth error: ' + m;
+}
+function updateBt() {
+  const el = $('#bt-status'), ok = bt && bt.device.gatt.connected;
+  if (!btSupported()) setMsg(el, 'Bluetooth needs Chrome on Android, opened from an https address. It isn\'t available here.', true);
+  else setMsg(el, ok ? `Connected to ${bt.device.name || 'printer'}${bt.ch.lang === 'cat' ? ' (pocket printer, 58 mm)' : ''}.` : bt ? `${bt.device.name || 'Printer'} disconnected. It reconnects when you print.` : 'Not connected. Turn the printer on, then press Connect printer.');
+  $('#bt-connect').textContent = ok ? 'Change printer' : 'Connect printer';
+}
+$('#bt-connect').onclick = async () => {
+  try { if (!btSupported()) throw new Error('NOBT'); if (bt && bt.device.gatt.connected) bt.device.gatt.disconnect(); bt = null; await btConnect(); }
+  catch (e) { bt = null; setMsg($('#bt-status'), btError(e), true); return; }
+  updateBt();
+};
+function setConn(v) {
+  conn = v; LS.set('ds.conn', v);
+  document.querySelectorAll('[data-conn]').forEach(b => b.setAttribute('aria-pressed', b.dataset.conn === v));
+  $('#box-bt').hidden = v !== 'bt'; $('#box-net').hidden = v !== 'net';
+  setMsg($('#print-note'), v === 'net' && !helper ? 'Preview only until the helper is running.' : v === 'bt' && !btSupported() ? 'Preview only: Bluetooth isn\'t available in this browser.' : '');
+}
+document.querySelectorAll('[data-conn]').forEach(b => b.onclick = () => setConn(b.dataset.conn));
+
+// ---- Photo: load, rotate, adjust, dither to 1-bit at the printer's dot width ----
+const PH = { img: null, name: '', rot: 0, dither: 'atkinson', canvas: document.createElement('canvas') };
+const esc = t => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function drawPhoto() {
+  const img = PH.img, dots = S.w === 58 ? 384 : 576, side = PH.rot % 180 !== 0;
+  const iw = side ? img.naturalHeight : img.naturalWidth, ih = side ? img.naturalWidth : img.naturalHeight;
+  const w = dots, h = Math.min(Math.round(ih * dots / iw), dots * 4), cv = PH.canvas;
+  cv.width = w; cv.height = h;
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+  g.save(); g.translate(w / 2, h / 2); g.rotate(PH.rot * Math.PI / 180);
+  const dw = side ? h : w, dh = side ? w : h; g.drawImage(img, -dw / 2, -dh / 2, dw, dh); g.restore();
+  const id = g.getImageData(0, 0, w, h), px = id.data, L = new Float32Array(w * h);
+  const bri = +$('#ph-bri').value * 2.55, con = +$('#ph-con').value, f = (259 * (con + 255)) / (255 * (259 - con));
+  for (let i = 0; i < w * h; i++) {
+    const y = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
+    L[i] = f * (y + bri - 128) + 128;
+  }
+  const add = (x, y, v) => { if (x >= 0 && x < w && y < h) L[y * w + x] += v; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, o = L[i] < 128 ? 0 : 255, e = L[i] - o; L[i] = o;
+    if (PH.dither === 'fs') { add(x + 1, y, e * 7 / 16); add(x - 1, y + 1, e * 3 / 16); add(x, y + 1, e * 5 / 16); add(x + 1, y + 1, e / 16); }
+    else if (PH.dither === 'atkinson') { const q = e / 8; add(x + 1, y, q); add(x + 2, y, q); add(x - 1, y + 1, q); add(x, y + 1, q); add(x + 1, y + 1, q); add(x, y + 2, q); }
+  }
+  for (let i = 0; i < w * h; i++) { const v = L[i]; px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = v; px[i * 4 + 3] = 255; }
+  g.putImageData(id, 0, 0);
+}
+function loadPhoto(file) {
+  if (!file || !/^image\//.test(file.type)) return;
+  const img = new Image(), url = URL.createObjectURL(file);
+  img.onload = () => { PH.img = img; PH.name = file.name; PH.rot = 0; $('#ph-name').textContent = file.name; render(); };
+  img.onerror = () => { $('#ph-name').textContent = "Couldn't open that image. Try a JPG or PNG."; };
+  img.src = url;
+}
+$('#ph-file').onchange = e => { loadPhoto(e.target.files[0]); e.target.value = ''; };
+const phDrop = $('#ph-drop');
+['dragenter', 'dragover'].forEach(t => phDrop.addEventListener(t, e => { e.preventDefault(); phDrop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => phDrop.addEventListener(t, e => { e.preventDefault(); phDrop.classList.remove('over'); }));
+phDrop.addEventListener('drop', e => loadPhoto(e.dataTransfer.files[0]));
+let phT = 0;
+[['#ph-bri', '#ph-bri-o'], ['#ph-con', '#ph-con-o']].forEach(([a, o]) => $(a).oninput = () => { $(o).textContent = $(a).value; cancelAnimationFrame(phT); phT = requestAnimationFrame(render); });
+document.querySelectorAll('[data-dither]').forEach(b => b.onclick = () => { PH.dither = b.dataset.dither; document.querySelectorAll('[data-dither]').forEach(x => x.setAttribute('aria-pressed', x === b)); render(); });
+$('#ph-rot').onclick = () => { PH.rot = (PH.rot + 90) % 360; render(); };
+$('#ph-clear').onclick = () => { PH.img = null; PH.name = ''; $('#ph-name').textContent = 'Choose a photo'; render(); };
+$('#ph-cap').oninput = render; $('#ph-date').onchange = render;
+
+(async () => {
+  $('#p-ip').value = LS.get('ds.ip') || ''; $('#p-port').value = LS.get('ds.port') || '9100'; $('#p-cut').checked = LS.get('ds.cut') !== '0';
+  if (LS.get('ds.note')) $('#note-path').value = LS.get('ds.note');
+  try {
+    const j = await api('/api/config');
+    if (j && j.helper === true) {
+      helper = j;
+      $('#p-ip').value = j.printer_ip || ''; $('#p-port').value = j.printer_port || 9100; $('#p-cut').checked = j.cut !== false;
+      $('#p-vault').value = j.vault_path || ''; if (j.weekly_note) $('#note-path').value = j.weekly_note;
+    }
+  } catch (e) {}
+  $('#row-vault').hidden = !helper;
+  setMsg($('#helper-status'), helper ? 'Helper connected.' : 'Helper not running. Network printing and vault reading need the helper on your PC.', !helper);
+  setConn(LS.get('ds.conn') || (helper ? 'net' : 'bt'));
+  updateBt();
+  if (conn === 'net' && helper && !helper.printer_ip) $('#printer').open = true;
+  if (helper && (S.mode === 'menu' || S.mode === 'list') && S.src === 'note') loadNote();
+})();
+addEventListener('resize', fit);
+if (LS.get('ds.w') === '58') S.w = 58;
+render();
+document.fonts && document.fonts.ready.then(fit);
+</script>
+
+</html>
