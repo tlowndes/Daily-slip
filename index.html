@@ -745,12 +745,14 @@ async function findWritable(server) {
   if (cat) {
     const chs = await cat.getCharacteristics();
     const tx = chs.find(c => c.uuid.startsWith('0000ae01')) || chs.find(c => c.properties.writeWithoutResponse || c.properties.write);
-    const rx = chs.find(c => c.uuid.startsWith('0000ae02') && c.properties.notify);
     if (tx) {
-      if (rx) { try { await rx.startNotifications(); rx.addEventListener('characteristicvaluechanged', e => {
-        const v = new Uint8Array(e.target.value.buffer);
-        if (v[2] === 0xAE && bt) bt.paused = v[6] === 0x10;   // printer asks us to wait / carry on
-      }); } catch (e) {} }
+      // Listen on every notify channel: the printer says "51 78 AE .. 10" when its buffer is full and ".. 00" when it can take more.
+      for (const rx of chs.filter(c => c.properties.notify || c.properties.indicate)) {
+        try { await rx.startNotifications(); rx.addEventListener('characteristicvaluechanged', e => {
+          const v = new Uint8Array(e.target.value.buffer, e.target.value.byteOffset, e.target.value.byteLength);
+          for (let i = 0; i + 6 < v.length; i++) if (v[i] === 0x51 && v[i + 1] === 0x78 && v[i + 2] === 0xAE && bt) { bt.paused = v[i + 6] === 0x10; if (bt.paused) bt.pauses++; }
+        }); } catch (e) {}
+      }
       tx.lang = 'cat'; return tx;
     }
   }
@@ -781,7 +783,7 @@ async function btConnect() {
   const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BT_SERVICES });
   device.addEventListener('gattserverdisconnected', updateBt);
   const ch = await findWritable(await device.gatt.connect());
-  bt = { device, ch, step: 180, paused: false };
+  bt = { device, ch, step: 180, paused: false, pauses: 0 };
   if (ch.lang === 'cat' && S.w !== 58) { S.w = 58; LS.set('ds.w', 58); render(); }
   LS.set('ds.btname', device.name || '');
 }
@@ -791,14 +793,17 @@ async function btReady() {
   else if (!bt.device.gatt.connected) bt.ch = await findWritable(await bt.device.gatt.connect());
 }
 async function btSend(job, progress) {
-  const ch = bt.ch, fast = ch.properties.writeWithoutResponse;
+  // Pocket printers: write-with-response when offered (the printer acknowledges each piece), small pieces, and a pause between them.
+  const ch = bt.ch, cat = ch.lang === 'cat', fast = ch.properties.writeWithoutResponse && !(cat && ch.properties.write);
+  if (cat) bt.step = Math.min(bt.step, 112);
+  bt.paused = false;
   let i = 0, last = -1;
   while (i < job.length) {
-    while (bt.paused) await sleep(20);
+    for (let t = 0; bt.paused && t < 1500; t++) await sleep(20);   // wait up to 30 s for the printer to catch up
     const chunk = job.subarray(i, i + bt.step);
     try {
-      if (fast) { await ch.writeValueWithoutResponse(chunk); await sleep(bt.step > 100 ? 12 : 4); }
-      else await ch.writeValueWithResponse(chunk);
+      if (fast) { await ch.writeValueWithoutResponse(chunk); await sleep(cat ? 30 : bt.step > 100 ? 12 : 4); }
+      else { await ch.writeValueWithResponse(chunk); if (cat) await sleep(8); }
     } catch (e) {
       if (bt.step > 20) { bt.step = 20; continue; }   // small connection packet size: retry in 20-byte pieces
       throw e;
