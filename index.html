@@ -204,7 +204,7 @@ svg.g { fill: none; stroke: var(--print); stroke-width: 3; stroke-linecap: round
   <aside class="panel" aria-label="Print options">
     <div class="brand">
       <h1>Daily Slip</h1>
-      <p>Pick a printout and what goes on it. <span style="opacity:.6">· v4</span></p>
+      <p>Pick a printout and what goes on it. <span style="opacity:.6">· v5</span></p>
     </div>
 
     <div class="group">
@@ -698,8 +698,9 @@ $('#print-btn').onclick = async () => {
       if (bt.ch.lang === 'cat' && S.w !== 58) { S.w = 58; render(); setMsg(note, 'This printer takes 58 mm paper, so the layout switched to 58 mm.'); await sleep(300); }
       const img = await rasterise();
       const job = bt.ch.lang === 'cat' ? buildCatJob(img.width, img.height, img.bytes, S.mode === 'photo' ? 5000 : 8000) : buildJob(img.width, img.height, img.bytes, c.cut);
+      const t0 = performance.now(); bt.pauses = 0;
       await btSend(job, p => setMsg(note, `Sending to ${bt.device.name || 'printer'} · ${p}%`));
-      setMsg(note, `Printed on ${bt.device.name || 'printer'} · ${(job.length / 1024).toFixed(0)} KB`);
+      setMsg(note, `Printed on ${bt.device.name || 'printer'} · ${(job.length / 1024).toFixed(0)} KB · ${Math.round((performance.now() - t0) / 1000)} s · ${bt.pauses} busy signals`);
     } catch (e) { setMsg(note, btError(e), true); $('#printer').open = true; }
     finally { btn.disabled = false; btn.textContent = 'Print'; updateBt(); }
     return;
@@ -735,7 +736,7 @@ const BT_SERVICES = ['000018f0-0000-1000-8000-00805f9b34fb', '0000ff00-0000-1000
   '0000fee7-0000-1000-8000-00805f9b34fb', '0000ff12-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455',
   'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '0000ae30-0000-1000-8000-00805f9b34fb', '0000af30-0000-1000-8000-00805f9b34fb'];
 const CAT = ['0000ae30', '0000af30'];
-const BT_ROW_MS = 3, BT_DARK_MS = 45;   // pocket printer pacing: base wait per row + extra for an all-black row
+const BT_ROW_MS = 12, BT_DARK_MS = 40;   // pocket printer pacing: base wait per row + extra for an all-black row
 let bt = null, conn = 'bt';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function btSupported() { return !!(navigator.bluetooth && window.isSecureContext); }
