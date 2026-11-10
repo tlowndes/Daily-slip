@@ -111,6 +111,8 @@ pre.fmt { overflow-x: auto; font: 12px/1.4 var(--f-mono); background: var(--chip
   width: 576px; padding: 36px 24px 56px; position: relative; box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 14px 30px -12px rgba(0,0,0,.35);
   -webkit-font-smoothing: none; font-smooth: never }
 .receipt.w58 { --fs: 18px; width: 384px; padding: 30px 14px 50px }
+/* Phomemo M02 Pro: 48 mm head at 300 dpi. Laid out like 58 mm, rendered at 1.5x so it fills all 576 dots. */
+.receipt.w53 { padding: 26px 4px 44px }
 .receipt::after { content: ""; position: absolute; left: 0; right: 0; bottom: -12px; height: 12px; background:
   linear-gradient(-45deg, transparent 8px, var(--paper) 0) 0 0 / 16px 12px repeat-x,
   linear-gradient(45deg, transparent 8px, var(--paper) 0) 0 0 / 16px 12px repeat-x }
@@ -204,7 +206,7 @@ svg.g { fill: none; stroke: var(--print); stroke-width: 3; stroke-linecap: round
   <aside class="panel" aria-label="Print options">
     <div class="brand">
       <h1>Daily Slip</h1>
-      <p>Pick a printout and what goes on it. <span style="opacity:.6">· v5</span></p>
+      <p>Pick a printout and what goes on it. <span style="opacity:.6">· v7</span></p>
     </div>
 
     <div class="group">
@@ -272,6 +274,7 @@ svg.g { fill: none; stroke: var(--print); stroke-width: 3; stroke-linecap: round
       <div class="seg" role="group" aria-label="Paper width">
         <button type="button" id="w80" data-w="80" aria-pressed="true">80 mm<small>576 dots</small></button>
         <button type="button" id="w58" data-w="58" aria-pressed="false">58 mm<small>384 dots</small></button>
+        <button type="button" id="w53" data-w="53" aria-pressed="false">M02 Pro<small>53 mm · 300 dpi</small></button>
       </div>
     </div>
 
@@ -282,10 +285,13 @@ svg.g { fill: none; stroke: var(--print); stroke-width: 3; stroke-linecap: round
           <div class="sec-head">
             <div class="move"><button type="button" data-dir="-1" aria-label="Move weather up">▲</button><button type="button" data-dir="1" aria-label="Move weather down">▼</button></div>
             <div class="sec-ico"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.5"/><path d="M9 2v1.5M2 9h1.5M4 4l1 1M14 4l-1 1"/><path d="M8 20h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.5 1.5A2.8 2.8 0 0 0 8 20z"/></svg></div>
-            <div class="sec-title"><b>Weather</b><span>London · Met Office</span></div>
+            <div class="sec-title"><b>Weather</b><span id="wx-label">Live · Open-Meteo</span></div>
             <label class="switch"><input type="checkbox" id="on-weather" checked aria-label="Print weather"><i></i></label>
           </div>
-          <div class="sub"><label class="check"><input type="checkbox" id="opt-hourly" checked>Hourly strip</label></div>
+          <div class="sub"><label class="check"><input type="checkbox" id="opt-hourly" checked>Hourly strip</label>
+            <div class="row2" style="width:100%;margin-top:6px"><label class="field" for="wx-town"><span>Town</span><input id="wx-town" type="text" value="London" spellcheck="false" autocomplete="off"></label>
+            <button type="button" class="btn" id="wx-here" style="align-self:end">Use my location</button></div>
+            <p class="hint" id="wx-msg" style="margin:4px 0 0"></p></div>
         </div>
 
         <div class="sec" data-key="calendar">
@@ -415,25 +421,96 @@ let shop = [
   ['Bakery & frozen', ['Puff pastry','Frozen peas']]
 ];
 const sudoku = {
-  easy: '530070000600195000098000060800060003400802001700020006060000280000419005000080079',
+  easy: '530070000600195000098000060800060003400803001700020006060000280000419005000080079',
   hard: '800000000003600000070090200050007000000045700000100030001000068008500010090000400'
 };
 const cw = { grid: ['SLATE','T#L#A','ODOUR','R#N#N','MEETS'], nums: { '0,0':1, '0,2':2, '0,4':3, '2,0':4, '4,0':5 },
   across: [[1,'Roof tile, or a clean one to start afresh (5)'],[4,'Smell, spelt the British way (5)'],[5,'Comes together (5)']],
   down: [[1,'Thunder and lightning (5)'],[2,'Without company (5)'],[3,'Takes home, as wages (5)']] };
 
+// ---- live date ----
+const NOW = new Date();
+const fmt = (d, o) => d.toLocaleDateString('en-GB', o);
+const TMRW = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + 1);
+function dayInfo(d) {
+  const start = new Date(d.getFullYear(), 0, 1), end = new Date(d.getFullYear(), 11, 31);
+  const doy = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - start) / 864e5) + 1;
+  const total = Math.round((end - start) / 864e5) + 1;
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const dn = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dn); const week = Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+  return { doy, total, week, left: total - doy };
+}
+
+// ---- live weather (Open-Meteo: free, no key, works from the phone) ----
+let WX = null;
+const WMO = c => c === 0 ? ['Clear', 'sun'] : c === 1 ? ['Mostly sunny', 'sun'] : c === 2 ? ['Sunny spells', 'part'] : c === 3 ? ['Overcast', 'cloud']
+  : c <= 48 ? ['Foggy', 'cloud'] : c <= 57 ? ['Drizzle', 'rain'] : c <= 67 ? ['Rain', 'rain'] : c <= 77 ? ['Snow', 'cloud']
+  : c <= 82 ? ['Showers', 'rain'] : c <= 86 ? ['Snow showers', 'cloud'] : ['Thunderstorms', 'rain'];
+const WET = c => c >= 51 && c !== 71 && c !== 73 && c !== 75 && c !== 77;
+const compass = d => ['N','NE','E','SE','S','SW','W','NW'][Math.round(d / 45) % 8];
+const hh = iso => iso.slice(11, 16);
+const ampm = h => h === 0 ? 'midnight' : h === 12 ? 'midday' : h < 12 ? h + 'am' : (h - 12) + 'pm';
+async function loadWeather(place) {
+  const msg = $('#wx-msg');
+  try {
+    let loc = place;
+    if (!loc.lat) {
+      setMsg(msg, 'Finding ' + loc.name + '…');
+      const g = await (await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=' + encodeURIComponent(loc.name))).json();
+      if (!g.results || !g.results.length) throw new Error('Couldn\'t find "' + loc.name + '". Try a nearby town.');
+      loc = { name: g.results[0].name, lat: g.results[0].latitude, lon: g.results[0].longitude };
+    }
+    setMsg(msg, 'Getting the forecast…');
+    const q = 'https://api.open-meteo.com/v1/forecast?latitude=' + loc.lat + '&longitude=' + loc.lon + '&timezone=auto&wind_speed_unit=mph&forecast_days=2'
+      + '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,is_day'
+      + '&hourly=temperature_2m,weather_code,precipitation_probability,is_day'
+      + '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset';
+    const j = await (await fetch(q)).json();
+    if (!j.current) throw new Error(j.reason || 'No forecast came back.');
+    WX = { ...j, place: loc.name };
+    LS.set('ds.wx', JSON.stringify(loc));
+    $('#wx-town').value = loc.name;
+    setMsg(msg, 'Live for ' + loc.name + ' · updated ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+  } catch (e) { WX = null; setMsg(msg, (e.message || 'Weather didn\'t load') + ' Showing example weather.', true); }
+  render();
+}
+function wxView() {
+  const c = WX.current, d = WX.daily, H = WX.hourly, today = d.time[0];
+  const [desc, k0] = WMO(c.weather_code), k = !c.is_day && k0 === 'sun' ? 'moon' : k0;
+  const nowH = c.time.slice(0, 13);
+  const idx = H.time.map((t, i) => [t, i]).filter(([t]) => t.startsWith(today));
+  const ahead = idx.filter(([t]) => t.slice(0, 13) >= nowH);
+  const wet = ahead.find(([, i]) => WET(H.weather_code[i]) && H.precipitation_probability[i] >= 40);
+  const nowWet = WET(c.weather_code);
+  const dry = nowWet ? ahead.find(([, i]) => !WET(H.weather_code[i])) : null;
+  const note = nowWet ? (dry ? 'Drying up by ' + ampm(+dry[0].slice(11, 13)) : 'Wet for the rest of the day')
+    : wet ? (/shower/i.test(WMO(H.weather_code[wet[1]])[0]) ? 'Showers' : 'Rain') + ' from ' + ampm(+wet[0].slice(11, 13)) : 'Staying dry';
+  const uv = Math.round(d.uv_index_max[0]), uvT = uv <= 2 ? 'low' : uv <= 5 ? 'mod' : uv <= 7 ? 'high' : 'v high';
+  const hours = [9, 12, 15, 18, 21].map(h => {
+    const i = H.time.indexOf(today + 'T' + String(h).padStart(2, '0') + ':00'); if (i < 0) return null;
+    const [, kk] = WMO(H.weather_code[i]);
+    return [String(h).padStart(2, '0'), !H.is_day[i] && kk === 'sun' ? 'moon' : kk, Math.round(H.temperature_2m[i])];
+  }).filter(Boolean);
+  return { place: WX.place, k, temp: Math.round(c.temperature_2m), desc, note, feels: Math.round(c.apparent_temperature),
+    hi: Math.round(d.temperature_2m_max[0]), lo: Math.round(d.temperature_2m_min[0]), rain: d.precipitation_probability_max[0] + '%',
+    wind: compass(c.wind_direction_10m) + ' ' + Math.round(c.wind_speed_10m) + 'mph', uv: uv + ' ' + uvT,
+    rise: hh(d.sunrise[0]), set: hh(d.sunset[0]), hours };
+}
+const WX_EXAMPLE = { place: 'London', k: 'part', temp: 16, desc: 'Sunny spells', note: 'Showers after 5pm', feels: 14, hi: 16, lo: 9, rain: '60%',
+  wind: 'SW 14mph', uv: '2 low', rise: '07:21', set: '18:09', hours };
+
 // ---- section renderers ----
 const R = {
-  weather: () => `
-    <div class="r-h">Weather<small>London</small></div>
-    <div class="wx-now">${ico('part')}<div class="wx-temp">16°</div>
-      <div class="wx-desc"><b>Sunny spells</b><span>Showers after 5pm</span><span>Feels like 14°</span></div></div>
+  weather: () => { const w = WX ? wxView() : WX_EXAMPLE; return `
+    <div class="r-h">Weather<small>${esc(w.place)}${WX ? '' : ' · example'}</small></div>
+    <div class="wx-now">${ico(w.k)}<div class="wx-temp">${w.temp}°</div>
+      <div class="wx-desc"><b>${w.desc}</b><span>${w.note}</span><span>Feels like ${w.feels}°</span></div></div>
     <div class="wx-stats">
-      <div><span>High / low</span><b>16° / 9°</b></div><div><span>Rain</span><b>60%</b></div>
-      <div><span>Wind</span><b>SW 14mph</b></div><div><span>UV</span><b>2 low</b></div>
-      <div><span>Sunrise</span><b>07:21</b></div><div><span>Sunset</span><b>18:09</b></div>
+      <div><span>High / low</span><b>${w.hi}° / ${w.lo}°</b></div><div><span>Rain</span><b>${w.rain}</b></div>
+      <div><span>Wind</span><b>${w.wind}</b></div><div><span>UV</span><b>${w.uv}</b></div>
+      <div><span>Sunrise</span><b>${w.rise}</b></div><div><span>Sunset</span><b>${w.set}</b></div>
     </div>
-    ${S.hourly ? `<div class="wx-hours">${hours.map(([h,k,t]) => `<div><span>${h}:00</span>${ico(k)}<b>${t}°</b></div>`).join('')}</div>` : ''}`,
+    ${S.hourly && w.hours.length ? `<div class="wx-hours" style="grid-template-columns:repeat(${w.hours.length},1fr)">${w.hours.map(([h,k,t]) => `<div><span>${h}:00</span>${ico(k)}<b>${t}°</b></div>`).join('')}</div>` : ''}`; },
 
   calendar: () => {
     const list = events.map(e => e.allday ? `<div class="allday">ALL DAY · ${e.allday}</div>`
@@ -441,9 +518,11 @@ const R = {
     let mm = '';
     if (S.month) {
       const cells = ['M','T','W','T','F','S','S'].map(d => `<div class="dh">${d}</div>`);
-      for (let i = 0; i < 3; i++) cells.push('<div></div>'); // 1 Oct 2026 is a Thursday
-      for (let d = 1; d <= 31; d++) cells.push(`<div class="${d === 14 ? 'today' : d < 14 ? 'past' : ''}">${d}</div>`);
-      mm = `<div class="mm-t">October 2026</div><div class="mm">${cells.join('')}</div>`;
+      const y = NOW.getFullYear(), m = NOW.getMonth(), td = NOW.getDate();
+      const lead = (new Date(y, m, 1).getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate();
+      for (let i = 0; i < lead; i++) cells.push('<div></div>');
+      for (let d = 1; d <= days; d++) cells.push(`<div class="${d === td ? 'today' : d < td ? 'past' : ''}">${d}</div>`);
+      mm = `<div class="mm-t">${fmt(NOW, { month: 'long', year: 'numeric' })}</div><div class="mm">${cells.join('')}</div>`;
     }
     return `<div class="r-h">Calendar<small>Proton · ${events.length - 1} events</small></div><div class="ev">${list}</div>${mm}`;
   },
@@ -456,9 +535,9 @@ const R = {
       <div class="tag">${t.tag}${t.overdue ? ` · <span class="inv">OVERDUE</span> ${t.overdue}` : ''}</div></div></li>`).join('');
     const blank = S.blank ? '<li><div class="box"></div><div class="line"></div></li>'.repeat(3) : '';
     return `<div class="r-h">To-do<small>${items.length} open</small></div>
-      <div class="todo-day"><span class="inv">TODAY</span> Wed 14 Oct</div>
+      <div class="todo-day"><span class="inv">TODAY</span> ${fmt(NOW, { weekday: 'short', day: 'numeric', month: 'short' })}</div>
       <ul class="todo ${S.blank ? 'blank' : ''}">${li(today)}${blank}</ul>
-      ${tmrw.length ? `<div class="todo-day"><span class="inv">TOMORROW</span> Thu 15 Oct</div><ul class="todo">${li(tmrw)}</ul>` : ''}
+      ${tmrw.length ? `<div class="todo-day"><span class="inv">TOMORROW</span> ${fmt(TMRW, { weekday: 'short', day: 'numeric', month: 'short' })}</div><ul class="todo">${li(tmrw)}</ul>` : ''}
       <div class="src">from Obsidian · 01 - Inbox/Quick Task</div>`;
   },
 
@@ -511,15 +590,16 @@ const receipt = $('#receipt'), scaler = $('#scaler'), stage = $('#stage');
 
 function render() {
   const live = S.order.filter(k => S.on[k]);
-  const head = `<div class="r-hd"><div class="r-day">Wednesday</div><div class="r-date">14 October 2026</div>
-    <div class="r-meta"><span>Week 42</span><span>Day 287/365</span><span>78 days to go</span></div></div><hr class="rule solid">`;
+  const di = dayInfo(NOW);
+  const head = `<div class="r-hd"><div class="r-day">${fmt(NOW, { weekday: 'long' })}</div><div class="r-date">${fmt(NOW, { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+    <div class="r-meta"><span>Week ${di.week}</span><span>Day ${di.doy}/${di.total}</span><span>${di.left} days to go</span></div></div><hr class="rule solid">`;
   const body = live.length ? live.map(k => `<section class="r-sec">${R[k]()}</section>`).join('<hr class="rule">')
     : '<div class="empty">Nothing selected.<br>Turn on a section to print.</div>';
   const daily = S.mode === 'daily';
   const foot = `<hr class="rule solid"><div class="r-ft"><div class="big">${daily ? 'Have a good one, Tom' : S.mode === 'menu' ? 'Enjoy the week' : 'Happy shopping'}</div>
-    <div>${daily ? 'Printed 07:00' : 'Printed ' + new Date().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${S.w}mm roll</div>${daily ? '' : `<div>${srcLabel}</div>`}</div>`;
+    <div>${daily ? 'Printed ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'Printed ' + new Date().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${S.w}mm roll</div>${daily ? '' : `<div>${srcLabel}</div>`}</div>`;
   const photo = S.mode === 'photo';
-  receipt.className = 'receipt' + (S.w === 58 ? ' w58' : '') + (photo ? ' photo' : '');
+  receipt.className = 'receipt' + (S.w === 58 ? ' w58' : S.w === 53 ? ' w58 w53' : '') + (photo ? ' photo' : '');
   if (photo) {
     const cap = $('#ph-cap').value.trim(), dt = $('#ph-date').checked;
     receipt.innerHTML = PH.img ? '' : '<div class="empty" style="padding:60px 20px">No photo yet.<br>Choose one on the left.</div>';
@@ -672,9 +752,9 @@ $('#p-test').onclick = async () => {
 };
 
 async function rasterise() {
-  const dots = S.w === 58 ? 384 : 576;
+  const dots = S.w === 58 ? 384 : 576, scale = S.w === 53 ? 1.5 : 1;
   await (document.fonts && document.fonts.ready);
-  const canvas = await html2canvas(receipt, { scale: 1, backgroundColor: '#ffffff', logging: false,
+  const canvas = await html2canvas(receipt, { scale, backgroundColor: '#ffffff', logging: false,
     scrollX: -window.scrollX, scrollY: -window.scrollY,
     onclone: doc => { doc.getElementById('receipt').classList.add('printing'); const sc = doc.getElementById('scaler'); sc.style.transform = 'none'; sc.style.height = 'auto'; sc.parentElement.style.height = 'auto'; } });
   let src = canvas;
@@ -791,6 +871,7 @@ async function btConnect() {
   const ch = await findWritable(await device.gatt.connect());
   bt = { device, ch, step: 180, paused: false, pauses: 0 };
   if (ch.lang === 'cat' && S.w !== 58) { S.w = 58; LS.set('ds.w', 58); render(); }
+  else if (ch.lang === 'escpos' && /^M02/i.test(device.name || '') && S.w !== 53) { S.w = 53; LS.set('ds.w', 53); render(); }
   LS.set('ds.btname', device.name || '');
 }
 async function btReady() {
@@ -930,8 +1011,18 @@ $('#ph-cap').oninput = render; $('#ph-date').onchange = render;
 })();
 addEventListener('resize', fit);
 if (LS.get('ds.w') === '58') S.w = 58;
+else if (LS.get('ds.w') === '53') S.w = 53;
 render();
 document.fonts && document.fonts.ready.then(fit);
+{ let saved = null; try { saved = JSON.parse(LS.get('ds.wx') || 'null'); } catch (e) {}
+  loadWeather(saved || { name: 'London' }); }
+$('#wx-town').addEventListener('change', e => { const n = e.target.value.trim(); if (n) loadWeather({ name: n }); });
+$('#wx-here').onclick = () => {
+  if (!navigator.geolocation) return setMsg($('#wx-msg'), 'This browser can\'t share your location.', true);
+  setMsg($('#wx-msg'), 'Asking for your location…');
+  navigator.geolocation.getCurrentPosition(p => loadWeather({ name: 'Here', lat: +p.coords.latitude.toFixed(3), lon: +p.coords.longitude.toFixed(3) }),
+    () => setMsg($('#wx-msg'), 'Location was blocked. Type a town instead.', true), { timeout: 10000 });
+};
 </script>
 
 </html>
